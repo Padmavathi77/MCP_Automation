@@ -12,8 +12,7 @@ from autogen_ext.models.openai import OpenAIChatCompletionClient
 from FrameworkAIAgents.agentFactory import agentFactory
 
 os.environ[
-    "OPENAI_API_KEY"] = "sk-proj-_u_z3oDYUuXp898y_tYf4emQk0C32BfgQ4my-fOc4eGK8dEI-8KzHIYwd_EGIfE_0nBCUWlDOrT3BlbkFJyVLa_W64BtAqiJJFVi0uVTOtNW4YCZWL6oIgZWcYQ2h0OPei6lYFc69F6I38uZPIlz8eYT0bg"
-
+    "OPENAI_API_KEY"] = "Your API KEY goes here"
 
 async def main():
     model_client = OpenAIChatCompletionClient(model="gpt-4o")
