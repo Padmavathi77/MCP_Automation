@@ -1,6 +1,11 @@
 from autogen_ext.tools.mcp import StdioServerParams, McpWorkbench
+import os
+from dotenv import load_dotenv
+if __name__ =="__main__":
+    load_dotenv()
 
-
+DBUserName = os.getenv('DBUserName')
+DBPwd = os.getenv('DBPwd')
 class McpConfig:
 
     @staticmethod
@@ -16,8 +21,8 @@ class McpConfig:
             env={
                 "MYSQL_HOST": "localhost",
                 "MYSQL_PORT": "3306",
-                "MYSQL_USER": "root",
-                "MYSQL_PASSWORD": "root1234",
+                "MYSQL_USER": DBUserName,
+                "MYSQL_PASSWORD": DBPwd,
                 "MYSQL_DATABASE": "rahulshettyacademy"
                 }
             )

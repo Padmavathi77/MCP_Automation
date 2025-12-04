@@ -4,15 +4,22 @@
 
 import asyncio
 import os
-
+from dotenv import load_dotenv
 from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from FrameworkAIAgents.agentFactory import agentFactory
 
+if __name__ =="__main__":
+    load_dotenv()
+
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# print(f"{OPENAI_API_KEY=}")
+
 os.environ[
-    "OPENAI_API_KEY"] = "Your API KEY goes here"
+    "OPENAI_API_KEY"] = OPENAI_API_KEY
+
 
 async def main():
     model_client = OpenAIChatCompletionClient(model="gpt-4o")
