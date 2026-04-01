@@ -1,3 +1,4 @@
+# pylint: disable=redefined-outer-name, unused-argument
 from unittest.mock import MagicMock, patch
 
 from FrameworkAIAgents.agentFactory import agentFactory
