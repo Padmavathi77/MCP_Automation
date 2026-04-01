@@ -13,7 +13,7 @@ from FrameworkAIAgents.agentFactory import agentFactory
 
 from dotenv import load_dotenv
 
-if __name__ =="__main__":
+if __name__ == "__main__":
     load_dotenv()
 
 def _load_api_key():
