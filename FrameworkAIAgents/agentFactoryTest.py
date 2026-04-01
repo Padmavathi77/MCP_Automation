@@ -1,9 +1,31 @@
 # pylint: disable=redefined-outer-name, unused-argument
+import sys
 from unittest.mock import MagicMock, patch
 
-from FrameworkAIAgents.agentFactory import agentFactory
-
 import pytest
+
+mock_autogen_agentchat = MagicMock()
+mock_autogen_agentchat_agents = MagicMock()
+mock_autogen_ext = MagicMock()
+mock_autogen_ext_tools = MagicMock()
+mock_autogen_ext_tools_mcp = MagicMock()
+mock_autogen_ext_models = MagicMock()
+mock_autogen_ext_models_openai = MagicMock()
+mock_dotenv = MagicMock()
+
+sys.modules.setdefault("autogen_agentchat", mock_autogen_agentchat)
+sys.modules.setdefault("autogen_agentchat.agents", mock_autogen_agentchat_agents)
+sys.modules.setdefault("autogen_agentchat.conditions", MagicMock())
+sys.modules.setdefault("autogen_agentchat.teams", MagicMock())
+sys.modules.setdefault("autogen_agentchat.ui", MagicMock())
+sys.modules.setdefault("autogen_ext", mock_autogen_ext)
+sys.modules.setdefault("autogen_ext.tools", mock_autogen_ext_tools)
+sys.modules.setdefault("autogen_ext.tools.mcp", mock_autogen_ext_tools_mcp)
+sys.modules.setdefault("autogen_ext.models", mock_autogen_ext_models)
+sys.modules.setdefault("autogen_ext.models.openai", mock_autogen_ext_models_openai)
+sys.modules.setdefault("dotenv", mock_dotenv)
+
+from FrameworkAIAgents.agentFactory import agentFactory
 
 
 @pytest.fixture
