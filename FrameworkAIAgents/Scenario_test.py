@@ -1,8 +1,28 @@
 import asyncio
 import os
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Mock external dependencies that may not be installed in CI
+_mock_modules = {
+    "autogen_agentchat": MagicMock(),
+    "autogen_agentchat.agents": MagicMock(),
+    "autogen_agentchat.conditions": MagicMock(),
+    "autogen_agentchat.teams": MagicMock(),
+    "autogen_agentchat.ui": MagicMock(),
+    "autogen_ext": MagicMock(),
+    "autogen_ext.models": MagicMock(),
+    "autogen_ext.models.openai": MagicMock(),
+    "autogen_ext.tools": MagicMock(),
+    "autogen_ext.tools.mcp": MagicMock(),
+    "dotenv": MagicMock(),
+}
+
+for mod_name, mock_mod in _mock_modules.items():
+    if mod_name not in sys.modules:
+        sys.modules[mod_name] = mock_mod
 
 
 class TestLoadApiKey:
@@ -40,6 +60,15 @@ class TestLoadApiKey:
         with pytest.raises(ValueError, match="OPENAI_API_KEY environment variable is not set"):
             _load_api_key()
 
+    def test_handles_whitespace_only_api_key(self, monkeypatch):
+        # Whitespace-only key is technically truthy but still set in os.environ
+        monkeypatch.setenv("OPENAI_API_KEY", "   ")
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result = _load_api_key()
+        assert result == "   "
+        assert os.environ["OPENAI_API_KEY"] == "   "
+
 
 class TestMain:
 
@@ -56,8 +85,7 @@ class TestMain:
     ):
         # main() should instantiate OpenAIChatCompletionClient with model="gpt-4o"
         mock_console.return_value = "result"
-        mock_team_instance = MagicMock()
-        mock_team_cls.return_value = mock_team_instance
+        mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
@@ -119,7 +147,9 @@ class TestMain:
 
         asyncio.run(main())
         call_kwargs = mock_factory_instance.create_database_agent.call_args
-        system_msg = call_kwargs.kwargs.get("system_message", call_kwargs[1].get("system_message", ""))
+        system_msg = call_kwargs.kwargs.get(
+            "system_message", call_kwargs[1].get("system_message", "")
+        )
         assert "rahulshettyacademy" in system_msg
         assert "RegistrationDetails" in system_msg
         assert "Usernames" in system_msg
@@ -142,7 +172,9 @@ class TestMain:
 
         asyncio.run(main())
         call_kwargs = mock_factory_instance.create_api_agent.call_args
-        system_msg = call_kwargs.kwargs.get("system_message", call_kwargs[1].get("system_message", ""))
+        system_msg = call_kwargs.kwargs.get(
+            "system_message", call_kwargs[1].get("system_message", "")
+        )
         assert "rahulshettyacademy.com/api/ecom/auth/register" in system_msg
         assert "API_TESTING_COMPLETE" in system_msg
 
@@ -163,7 +195,9 @@ class TestMain:
 
         asyncio.run(main())
         call_kwargs = mock_factory_instance.create_excel_agent.call_args
-        system_msg = call_kwargs.kwargs.get("system_message", call_kwargs[1].get("system_message", ""))
+        system_msg = call_kwargs.kwargs.get(
+            "system_message", call_kwargs[1].get("system_message", "")
+        )
         assert "newdata.xlsx" in system_msg
         assert "REGISTRATION PROCESS COMPLETE" in system_msg
 
@@ -173,7 +207,12 @@ class TestMain:
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_team_uses_round_robin_with_three_agents_and_termination(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console, mock_termination_cls
+        self,
+        mock_client_cls,
+        mock_factory_cls,
+        mock_team_cls,
+        mock_console,
+        mock_termination_cls,
     ):
         # RoundRobinGroupChat should receive all 3 agents and the termination condition
         mock_console.return_value = "result"
@@ -225,7 +264,7 @@ class TestMain:
     def test_console_receives_team_run_stream(
         self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
     ):
-        # Console should be called with team.run_stream() output
+        # Console should be awaited with team.run_stream() output
         mock_console.return_value = "result"
         mock_team_instance = MagicMock()
         mock_team_cls.return_value = mock_team_instance
@@ -243,11 +282,13 @@ class TestMain:
         mock_console.assert_awaited_once_with(mock_stream)
 
     def test_main_raises_when_api_key_missing(self, monkeypatch):
-        # If OPENAI_API_KEY is not set, main() should propagate ValueError from _load_api_key
+        # If OPENAI_API_KEY is not set, main() should propagate ValueError
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         from FrameworkAIAgents.Scenario import main
 
-        with pytest.raises(ValueError, match="OPENAI_API_KEY environment variable is not set"):
+        with pytest.raises(
+            ValueError, match="OPENAI_API_KEY environment variable is not set"
+        ):
             asyncio.run(main())
 
     @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
@@ -272,3 +313,32 @@ class TestMain:
         assert "STEP 2 - APIAgent" in task_arg
         assert "STEP 3 - ExcelAgent" in task_arg
         assert "Pass data.clearly between agents" in task_arg
+
+    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_agents_created_in_correct_order(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+    ):
+        # Agents must be created in order: database -> api -> excel for RoundRobin
+        call_order = []
+        mock_console.return_value = "result"
+        mock_factory_instance = MagicMock()
+        mock_factory_cls.return_value = mock_factory_instance
+        mock_team_cls.return_value = MagicMock()
+
+        mock_factory_instance.create_database_agent.side_effect = (
+            lambda **kw: call_order.append("database") or MagicMock()
+        )
+        mock_factory_instance.create_api_agent.side_effect = (
+            lambda **kw: call_order.append("api") or MagicMock()
+        )
+        mock_factory_instance.create_excel_agent.side_effect = (
+            lambda **kw: call_order.append("excel") or MagicMock()
+        )
+
+        from FrameworkAIAgents.Scenario import main
+
+        asyncio.run(main())
+        assert call_order == ["database", "api", "excel"]
