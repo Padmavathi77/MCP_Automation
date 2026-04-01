@@ -26,6 +26,12 @@ for mod_name, mock_mod in _mock_modules.items():
         sys.modules[mod_name] = mock_mod
 
 
+def _make_console_mock(return_value="result"):
+    mock = AsyncMock()
+    mock.return_value = return_value
+    return mock
+
+
 class TestLoadApiKey:
 
     def test_returns_key_when_env_var_is_set(self, monkeypatch):
@@ -77,76 +83,72 @@ class TestMain:
     def _set_api_key(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test-main-key")
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_creates_model_client_with_gpt4o(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # main() should instantiate OpenAIChatCompletionClient with model="gpt-4o"
-        mock_console.return_value = "result"
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         mock_client_cls.assert_called_once_with(model="gpt-4o")
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_creates_agent_factory_with_model_client(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # agentFactory should receive the model_client instance
-        mock_console.return_value = "result"
         mock_client_instance = MagicMock()
         mock_client_cls.return_value = mock_client_instance
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         mock_factory_cls.assert_called_once_with(mock_client_instance)
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_creates_three_agents_with_system_messages(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # main() should create exactly 3 agents: database, api, and excel
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         mock_factory_instance.create_database_agent.assert_called_once()
         mock_factory_instance.create_api_agent.assert_called_once()
         mock_factory_instance.create_excel_agent.assert_called_once()
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_database_agent_system_message_contains_key_instructions(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # Database agent prompt must mention the target DB and tables
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         call_kwargs = mock_factory_instance.create_database_agent.call_args
         system_msg = call_kwargs.kwargs.get(
             "system_message", call_kwargs[1].get("system_message", "")
@@ -156,22 +158,21 @@ class TestMain:
         assert "Usernames" in system_msg
         assert "DATABASE_DATA_READY" in system_msg
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_api_agent_system_message_contains_key_instructions(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # API agent prompt must reference the registration endpoint and completion signal
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         call_kwargs = mock_factory_instance.create_api_agent.call_args
         system_msg = call_kwargs.kwargs.get(
             "system_message", call_kwargs[1].get("system_message", "")
@@ -179,22 +180,21 @@ class TestMain:
         assert "rahulshettyacademy.com/api/ecom/auth/register" in system_msg
         assert "API_TESTING_COMPLETE" in system_msg
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_excel_agent_system_message_contains_key_instructions(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # Excel agent prompt must reference the output file and completion signal
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         call_kwargs = mock_factory_instance.create_excel_agent.call_args
         system_msg = call_kwargs.kwargs.get(
             "system_message", call_kwargs[1].get("system_message", "")
@@ -203,7 +203,6 @@ class TestMain:
         assert "REGISTRATION PROCESS COMPLETE" in system_msg
 
     @patch("FrameworkAIAgents.Scenario.TextMentionTermination")
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
@@ -212,11 +211,9 @@ class TestMain:
         mock_client_cls,
         mock_factory_cls,
         mock_team_cls,
-        mock_console,
         mock_termination_cls,
     ):
         # RoundRobinGroupChat should receive all 3 agents and the termination condition
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_instance = MagicMock()
@@ -234,39 +231,37 @@ class TestMain:
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         mock_termination_cls.assert_called_once_with("REGISTRATION PROCESS COMPLETE")
         mock_team_cls.assert_called_once_with(
             participants=[db_agent, api_agent, excel_agent],
             termination_condition=mock_termination,
         )
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_main_returns_task_result_from_console(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # main() should return whatever Console() resolves to
         expected_result = MagicMock(name="task_result")
-        mock_console.return_value = expected_result
         mock_team_cls.return_value = MagicMock()
 
         from FrameworkAIAgents.Scenario import main
 
-        result = asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock(expected_result)):
+            result = asyncio.run(main())
         assert result is expected_result
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_console_receives_team_run_stream(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # Console should be awaited with team.run_stream() output
-        mock_console.return_value = "result"
         mock_team_instance = MagicMock()
         mock_team_cls.return_value = mock_team_instance
         mock_stream = MagicMock(name="stream")
@@ -274,7 +269,9 @@ class TestMain:
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        mock_console = _make_console_mock()
+        with patch("FrameworkAIAgents.Scenario.Console", new=mock_console):
+            asyncio.run(main())
         mock_team_instance.run_stream.assert_called_once()
         task_arg = mock_team_instance.run_stream.call_args.kwargs.get(
             "task", mock_team_instance.run_stream.call_args[1].get("task", "")
@@ -292,21 +289,20 @@ class TestMain:
         ):
             asyncio.run(main())
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_task_message_contains_all_three_steps(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # The task string passed to run_stream must describe all 3 sequential steps
-        mock_console.return_value = "result"
         mock_team_instance = MagicMock()
         mock_team_cls.return_value = mock_team_instance
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         task_arg = mock_team_instance.run_stream.call_args.kwargs.get(
             "task", mock_team_instance.run_stream.call_args[1].get("task", "")
         )
@@ -315,16 +311,14 @@ class TestMain:
         assert "STEP 3 - ExcelAgent" in task_arg
         assert "Pass data.clearly between agents" in task_arg
 
-    @patch("FrameworkAIAgents.Scenario.Console", new_callable=lambda: AsyncMock)
     @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
     @patch("FrameworkAIAgents.Scenario.agentFactory")
     @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
     def test_agents_created_in_correct_order(
-        self, mock_client_cls, mock_factory_cls, mock_team_cls, mock_console
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
     ):
         # Agents must be created in order: database -> api -> excel for RoundRobin
         call_order = []
-        mock_console.return_value = "result"
         mock_factory_instance = MagicMock()
         mock_factory_cls.return_value = mock_factory_instance
         mock_team_cls.return_value = MagicMock()
@@ -341,5 +335,6 @@ class TestMain:
 
         from FrameworkAIAgents.Scenario import main
 
-        asyncio.run(main())
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            asyncio.run(main())
         assert call_order == ["database", "api", "excel"]
