@@ -4,31 +4,35 @@
 
 import asyncio
 import os
-from dotenv import load_dotenv
+
 from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_agentchat.ui import Console
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from FrameworkAIAgents.agentFactory import agentFactory
 
+from dotenv import load_dotenv
+
 if __name__ =="__main__":
     load_dotenv()
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-# print(f"{OPENAI_API_KEY=}")
-
-os.environ[
-    "OPENAI_API_KEY"] = OPENAI_API_KEY
+def _load_api_key():
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY environment variable is not set")
+    os.environ["OPENAI_API_KEY"] = api_key
+    return api_key
 
 
 async def main():
+    _load_api_key()
     model_client = OpenAIChatCompletionClient(model="gpt-4o")
     factory = agentFactory(model_client)
     database_agent = factory.create_database_agent(system_message=("""
             You are a database specialist responsible for retrieving user registration date.
             your task:
-            1. connect to mysql data base 'rahulshettyacademy'           
-            2. Query the 'RegistrationDetails' table to get a random record 
+            1. connect to mysql data base 'rahulshettyacademy'
+            2. Query the 'RegistrationDetails' table to get a random record
             3. Query the 'Usernames' table to get additional user data
             4. Remove "-" from Phone number and use the changed phone number for registration
             5. Combine the data from both tables to create complete registration information
@@ -63,7 +67,7 @@ async def main():
             3. Check APIAgent's response for actual login success/failure status
             4. Only save data if login was actually successful
             5. Open /Users/padmavathis/Documents/MCP_Automation/newdata.xlsx
-            6. Add registration data to RegistrationData sheet in newdata.xlsx, header and then data in the next row 
+            6. Add registration data to RegistrationData sheet in newdata.xlsx, header and then data in the next row
             7. Save and verify the data
 
             CRITICAL: Only save data if APIAgent reports successful login, not just attempted login.
@@ -87,6 +91,8 @@ async def main():
 
                                                      "Each agent should complete their work fully before the next agent begins. "
                                                      "Pass data.clearly between agents using the specified formats"))
+    return task_result
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
