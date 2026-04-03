@@ -228,3 +228,167 @@ class TestMultipleAgentCreation:
         calls = mock_assistant_agent.call_args_list
         assert calls[0].kwargs["model_client"] is client_a
         assert calls[1].kwargs["model_client"] is client_b
+
+
+class TestAgentFactoryInitEdgeCases:
+    def test_non_standard_model_client_types(self, mock_mcp_config):
+        # Verify factory accepts arbitrary types as model_client (duck typing)
+        for client in ["string_client", 42, {"key": "value"}, [1, 2, 3]]:
+            f = agentFactory(client)
+            assert f.model_client is client
+
+    def test_mcp_config_exception_propagates(self):
+        # Verify McpConfig() failure during init propagates to caller
+        with patch(
+            "FrameworkAIAgents.agentFactory.McpConfig",
+            side_effect=RuntimeError("config broken"),
+        ):
+            with pytest.raises(RuntimeError, match="config broken"):
+                agentFactory(MagicMock())
+
+
+class TestCreateDatabaseAgentEdgeCases:
+    def test_assistant_agent_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify AssistantAgent construction failure propagates to caller
+        mock_assistant_agent.side_effect = TypeError("bad args")
+        with pytest.raises(TypeError, match="bad args"):
+            factory.create_database_agent(system_message="test")
+
+    def test_workbench_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_mysql_workbench() failure propagates before AssistantAgent is called
+        mock_mcp_config.get_mysql_workbench.side_effect = ConnectionError("db down")
+        with pytest.raises(ConnectionError, match="db down"):
+            factory.create_database_agent(system_message="test")
+
+    def test_calls_get_mysql_workbench_exactly_once(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_mysql_workbench is called once per create_database_agent call
+        factory.create_database_agent(system_message="test")
+        mock_mcp_config.get_mysql_workbench.assert_called_once()
+
+    def test_non_string_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify non-string system_message (dict) is passed through without validation
+        msg = {"role": "system", "content": "structured"}
+        factory.create_database_agent(system_message=msg)
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] is msg
+
+    def test_repeated_calls_create_separate_agents(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify calling create_database_agent twice produces two separate calls
+        r1 = factory.create_database_agent(system_message="first")
+        r2 = factory.create_database_agent(system_message="second")
+        assert mock_assistant_agent.call_count == 2
+        calls = mock_assistant_agent.call_args_list
+        assert calls[0].kwargs["system_message"] == "first"
+        assert calls[1].kwargs["system_message"] == "second"
+
+    def test_very_large_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify a very large system_message is passed through without truncation
+        msg = "x" * 100_000
+        factory.create_database_agent(system_message=msg)
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] == msg
+        assert len(kwargs["system_message"]) == 100_000
+
+
+class TestCreateApiAgentEdgeCases:
+    def test_assistant_agent_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify AssistantAgent construction failure propagates to caller
+        mock_assistant_agent.side_effect = ValueError("invalid config")
+        with pytest.raises(ValueError, match="invalid config"):
+            factory.create_api_agent(system_message="test")
+
+    def test_rest_api_workbench_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_rest_api_workbench() failure propagates
+        mock_mcp_config.get_rest_api_workbench.side_effect = OSError("network error")
+        with pytest.raises(OSError, match="network error"):
+            factory.create_api_agent(system_message="test")
+
+    def test_filesystem_workbench_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_filesystem_workbench() failure propagates
+        mock_mcp_config.get_filesystem_workbench.side_effect = PermissionError("denied")
+        with pytest.raises(PermissionError, match="denied"):
+            factory.create_api_agent(system_message="test")
+
+    def test_calls_both_workbench_methods_exactly_once(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify both workbench getters are called once per create_api_agent call
+        factory.create_api_agent(system_message="test")
+        mock_mcp_config.get_rest_api_workbench.assert_called_once()
+        mock_mcp_config.get_filesystem_workbench.assert_called_once()
+
+    def test_empty_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify empty string system_message is passed through for API agent
+        factory.create_api_agent(system_message="")
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] == ""
+
+    def test_non_string_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify non-string system_message (list) is passed through without validation
+        msg = ["step1", "step2"]
+        factory.create_api_agent(system_message=msg)
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] is msg
+
+
+class TestCreateExcelAgentEdgeCases:
+    def test_assistant_agent_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify AssistantAgent construction failure propagates to caller
+        mock_assistant_agent.side_effect = RuntimeError("agent init failed")
+        with pytest.raises(RuntimeError, match="agent init failed"):
+            factory.create_excel_agent(system_message="test")
+
+    def test_excel_workbench_exception_propagates(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_excel_workbench() failure propagates
+        mock_mcp_config.get_excel_workbench.side_effect = FileNotFoundError("no excel")
+        with pytest.raises(FileNotFoundError, match="no excel"):
+            factory.create_excel_agent(system_message="test")
+
+    def test_calls_get_excel_workbench_exactly_once(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify get_excel_workbench is called once per create_excel_agent call
+        factory.create_excel_agent(system_message="test")
+        mock_mcp_config.get_excel_workbench.assert_called_once()
+
+    def test_empty_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify empty string system_message is passed through for Excel agent
+        factory.create_excel_agent(system_message="")
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] == ""
+
+    def test_non_string_system_message(
+        self, factory, mock_assistant_agent, mock_mcp_config
+    ):
+        # Verify non-string system_message (int) is passed through without validation
+        factory.create_excel_agent(system_message=999)
+        _, kwargs = mock_assistant_agent.call_args
+        assert kwargs["system_message"] == 999
