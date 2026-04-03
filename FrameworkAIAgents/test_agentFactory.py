@@ -284,8 +284,8 @@ class TestCreateDatabaseAgentEdgeCases:
         self, factory, mock_assistant_agent, mock_mcp_config
     ):
         # Verify calling create_database_agent twice produces two separate calls
-        r1 = factory.create_database_agent(system_message="first")
-        r2 = factory.create_database_agent(system_message="second")
+        factory.create_database_agent(system_message="first")
+        factory.create_database_agent(system_message="second")
         assert mock_assistant_agent.call_count == 2
         calls = mock_assistant_agent.call_args_list
         assert calls[0].kwargs["system_message"] == "first"
