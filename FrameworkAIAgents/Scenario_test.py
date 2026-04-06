@@ -1,5 +1,7 @@
 # pylint: disable=redefined-outer-name, unused-argument
 import asyncio
+import importlib
+import inspect
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -338,3 +340,166 @@ class TestMain:
         with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
             asyncio.run(main())
         assert call_order == ["database", "api", "excel"]
+
+
+class TestLoadApiKeyAdversarial:
+
+    def test_unicode_api_key_is_accepted(self, monkeypatch):
+        # Unicode characters in key should be stored and returned as-is
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-tëst-ünïcödé-🔑")
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result = _load_api_key()
+        assert result == "sk-tëst-ünïcödé-🔑"
+        assert os.environ["OPENAI_API_KEY"] == "sk-tëst-ünïcödé-🔑"
+
+    def test_very_long_api_key_is_accepted(self, monkeypatch):
+        # Extremely long key should not be truncated or rejected
+        long_key = "sk-" + "a" * 10000
+        monkeypatch.setenv("OPENAI_API_KEY", long_key)
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result = _load_api_key()
+        assert result == long_key
+        assert len(result) == 10003
+
+    def test_api_key_with_special_characters(self, monkeypatch):
+        # Keys with shell-special chars should be preserved without escaping
+        special_key = "sk-test$key&with|special<chars>\"quotes'"
+        monkeypatch.setenv("OPENAI_API_KEY", special_key)
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result = _load_api_key()
+        assert result == special_key
+
+    def test_idempotent_multiple_calls(self, monkeypatch):
+        # Calling _load_api_key twice should return the same value both times
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-idempotent")
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result1 = _load_api_key()
+        result2 = _load_api_key()
+        assert result1 == result2 == "sk-idempotent"
+
+    def test_newline_in_api_key(self, monkeypatch):
+        # Newline chars in key should be preserved (common copy-paste mistake)
+        key_with_newline = "sk-test\nkey"
+        monkeypatch.setenv("OPENAI_API_KEY", key_with_newline)
+        from FrameworkAIAgents.Scenario import _load_api_key
+
+        result = _load_api_key()
+        assert result == key_with_newline
+
+
+class TestMainErrorPropagation:
+
+    @pytest.fixture(autouse=True)
+    def _set_api_key(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-error-key")
+
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_model_client_creation_error(
+        self, mock_client_cls, mock_factory_cls
+    ):
+        # If OpenAIChatCompletionClient raises, main() should propagate the error
+        mock_client_cls.side_effect = RuntimeError("Invalid API key")
+        from FrameworkAIAgents.Scenario import main
+
+        with pytest.raises(RuntimeError, match="Invalid API key"):
+            asyncio.run(main())
+
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_agent_factory_creation_error(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
+    ):
+        # If agentFactory constructor raises, main() should propagate the error
+        mock_factory_cls.side_effect = TypeError("Missing required argument")
+        from FrameworkAIAgents.Scenario import main
+
+        with pytest.raises(TypeError, match="Missing required argument"):
+            asyncio.run(main())
+
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_database_agent_creation_error(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
+    ):
+        # If create_database_agent raises, main() should propagate before creating other agents
+        mock_factory_instance = MagicMock()
+        mock_factory_cls.return_value = mock_factory_instance
+        mock_factory_instance.create_database_agent.side_effect = ValueError("DB config error")
+        from FrameworkAIAgents.Scenario import main
+
+        with pytest.raises(ValueError, match="DB config error"):
+            asyncio.run(main())
+        mock_factory_instance.create_api_agent.assert_not_called()
+        mock_factory_instance.create_excel_agent.assert_not_called()
+
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_console_async_error(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
+    ):
+        # If Console (awaited) raises, main() should propagate the async error
+        mock_team_cls.return_value = MagicMock()
+        failing_console = AsyncMock(side_effect=ConnectionError("Stream failed"))
+        from FrameworkAIAgents.Scenario import main
+
+        with patch("FrameworkAIAgents.Scenario.Console", new=failing_console):
+            with pytest.raises(ConnectionError, match="Stream failed"):
+                asyncio.run(main())
+
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_round_robin_creation_error(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
+    ):
+        # If RoundRobinGroupChat constructor raises, main() should propagate
+        mock_team_cls.side_effect = ValueError("Invalid participants")
+        from FrameworkAIAgents.Scenario import main
+
+        with pytest.raises(ValueError, match="Invalid participants"):
+            asyncio.run(main())
+
+    @patch("FrameworkAIAgents.Scenario.RoundRobinGroupChat")
+    @patch("FrameworkAIAgents.Scenario.agentFactory")
+    @patch("FrameworkAIAgents.Scenario.OpenAIChatCompletionClient")
+    def test_propagates_run_stream_error(
+        self, mock_client_cls, mock_factory_cls, mock_team_cls
+    ):
+        # If team.run_stream() raises, main() should propagate before Console is called
+        mock_team_instance = MagicMock()
+        mock_team_cls.return_value = mock_team_instance
+        mock_team_instance.run_stream.side_effect = RuntimeError("Stream init failed")
+        from FrameworkAIAgents.Scenario import main
+
+        with patch("FrameworkAIAgents.Scenario.Console", new=_make_console_mock()):
+            with pytest.raises(RuntimeError, match="Stream init failed"):
+                asyncio.run(main())
+
+
+class TestMainIfNameGuard:
+
+    def test_module_level_guard_does_not_call_load_dotenv_on_import(self):
+        # Importing the module should NOT call load_dotenv since __name__ != "__main__"
+        with patch("FrameworkAIAgents.Scenario.load_dotenv") as mock_load:
+            import FrameworkAIAgents.Scenario as scenario_mod
+            importlib.reload(scenario_mod)
+            mock_load.assert_not_called()
+
+    def test_main_is_async_coroutine(self):
+        # main() should be an async function (coroutine function)
+        from FrameworkAIAgents.Scenario import main
+        assert inspect.iscoroutinefunction(main)
+
+    def test_load_api_key_is_sync_function(self):
+        # _load_api_key should be a regular sync function, not async
+        from FrameworkAIAgents.Scenario import _load_api_key
+        assert not inspect.iscoroutinefunction(_load_api_key)
+        assert callable(_load_api_key)
