@@ -489,23 +489,17 @@ class TestMainIfNameGuard:
     def test_module_level_guard_does_not_call_load_dotenv_on_import(self):
         # Importing the module should NOT call load_dotenv since __name__ != "__main__"
         with patch("FrameworkAIAgents.Scenario.load_dotenv") as mock_load:
-            import importlib
-
             import FrameworkAIAgents.Scenario as scenario_mod
             importlib.reload(scenario_mod)
             mock_load.assert_not_called()
 
     def test_main_is_async_coroutine(self):
         # main() should be an async function (coroutine function)
-        import inspect
-
         from FrameworkAIAgents.Scenario import main
         assert inspect.iscoroutinefunction(main)
 
     def test_load_api_key_is_sync_function(self):
         # _load_api_key should be a regular sync function, not async
-        import inspect
-
         from FrameworkAIAgents.Scenario import _load_api_key
         assert not inspect.iscoroutinefunction(_load_api_key)
         assert callable(_load_api_key)
